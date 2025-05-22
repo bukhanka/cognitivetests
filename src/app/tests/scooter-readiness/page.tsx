@@ -1,154 +1,145 @@
 "use client";
 
-import { useCallback } from "react";
-import TestPageLayout from "@/components/layout/TestPageLayout";
-import ScooterReadinessTest from "@/components/tests/ScooterReadinessTest";
-import { useTestResults } from "@/context/TestResultsContext";
-import { ScooterReadinessResult } from "@/types";
-import { getTestConfigById } from "@/app/tests/testConfig";
-import { GameConfig } from "@/hooks/useScooterReadinessGame";
+import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import Script from 'next/script';
+import { useRouter } from 'next/navigation';
+import { EyeTrackingTestResults } from '@/hooks/useEyeTrackingTest';
 
-const TEST_ID = "scooter-readiness";
-
-// Updated Urent colors matching the new purple theme
-const urentColors = {
-  primary: '#7e21cd', // Main purple
-  primaryLight: '#b06ae9', // Lighter purple
-  primaryDark: '#5f0f9f', // Darker purple
-  secondary: '#fc0065', // MTS accent color
-  accent: '#fc0065', // MTS accent color
-  safe: '#00c853',
-  warning: '#ffc107',
-  danger: '#ff3d00',
-  background: '#f7e5ff', // Light purple background
-  cardBackground: '#FFFFFF',
-  darkText: '#171717',
-  lightText: '#FFFFFF',
-};
-
-// Настройки игры для этой страницы
-const gameConfig: Partial<GameConfig> = {
-  testDuration: 10, // Длительность теста в секундах
-  totalElements: 15, // Общее количество элементов
-  tapProbability: 0.7, // 70% элементов будут 'tap'
-  reactionTimeThreshold: 1500, // Порог для времени реакции (мс)
-  accuracyThreshold: 75, // Порог для точности (%)
-  decisionScoreThreshold: 50, // Порог для принятия решений (%)
-};
-
-// The additionalInfo JSX updated with new styles to match screenshot
-const additionalInfoScooter = (
-  <div className="mt-8 p-6">
-    <h3 className="text-2xl font-bold mb-4" style={{ color: '#7e21cd' }}>
-      Как работает оценка?
-    </h3>
-    
-    <p className="mb-5">
-      Тест измеряет три ключевых показателя вашей готовности к безопасной поездке:
-    </p>
-    
-    <div className="space-y-6">
-      <div className="flex items-start">
-        <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center mr-4"
-             style={{ backgroundColor: '#7e21cd' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div>
-          <h4 className="font-semibold text-xl" style={{color: '#7e21cd'}}>Время реакции</h4>
-          <p>Скорость, с которой вы отвечаете на визуальные стимулы</p>
-        </div>
-      </div>
-      
-      <div className="flex items-start">
-        <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center mr-4"
-             style={{ backgroundColor: '#7e21cd' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div>
-          <h4 className="font-semibold text-xl" style={{color: '#7e21cd'}}>Точность</h4>
-          <p>Способность правильно различать и реагировать на разные элементы</p>
-        </div>
-      </div>
-      
-      <div className="flex items-start">
-        <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center mr-4"
-             style={{ backgroundColor: '#7e21cd' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </div>
-        <div>
-          <h4 className="font-semibold text-xl" style={{color: '#7e21cd'}}>Принятие решений</h4>
-          <p>Эффективность управления рисками в условиях быстрой смены событий</p>
-        </div>
-      </div>
-    </div>
-  </div>
+// Dynamic import to ensure it only loads on client
+const EyeTrackingTest = dynamic(
+  () => import('@/components/tests/EyeTrackingTest'),
+  { ssr: false }
 );
 
 export default function ScooterReadinessPage() {
-  const { addResult } = useTestResults();
+  const [scriptLoaded, setScriptLoaded] = useState(false);
+  const [testCompleted, setTestCompleted] = useState(false);
+  const [results, setResults] = useState<EyeTrackingTestResults | null>(null);
+  const router = useRouter();
 
-  const testConfig = getTestConfigById(TEST_ID);
+  // Manual script loading as a backup
+  useEffect(() => {
+    // Check if webgazer is already available 
+    if (typeof window !== 'undefined' && window.webgazer) {
+      console.log("WebGazer already available on window");
+      setScriptLoaded(true);
+      return;
+    }
 
-  // Define the type for the test results outside of the conditional
-  type ScooterReadinessTestResults = {
-    averageReactionTime: number;
-    accuracy: number;
-    decisionScore: number;
-    recommendation: string;
-    suggestedSpeed?: number;
-    safetyTip?: string;
+    // Otherwise manually load it if it hasn't been loaded yet
+    if (!scriptLoaded && typeof window !== 'undefined') {
+      const existingScript = document.querySelector('script[src="/webgazer.js"]');
+      
+      if (!existingScript) {
+        console.log("Manually loading WebGazer script");
+        const script = document.createElement('script');
+        script.src = '/webgazer.js';
+        script.async = true;
+        script.onload = () => {
+          console.log("WebGazer script manually loaded");
+          if (window.webgazer) {
+            console.log("WebGazer found on window after manual load");
+            setScriptLoaded(true);
+          } else {
+            console.error("WebGazer still not available after manual load");
+            // Continue with fallback mode
+            setScriptLoaded(true);
+          }
+        };
+        script.onerror = () => {
+          console.error("Failed to load WebGazer script manually");
+          // Continue with fallback mode
+          setScriptLoaded(true);
+        };
+        document.body.appendChild(script);
+      }
+    }
+  }, [scriptLoaded]);
+
+  // Check if webgazer is available on window after script load
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.webgazer) {
+      console.log("WebGazer found on window object");
+      setScriptLoaded(true);
+    }
+  }, []);
+
+  const handleScriptLoad = () => {
+    console.log("WebGazer script loading completed");
+    // Check if webgazer is available now
+    if (typeof window !== 'undefined' && window.webgazer) {
+      console.log("WebGazer object found on window");
+      setScriptLoaded(true);
+    } else {
+      console.warn("Script loaded but webgazer object not found");
+      // Wait a bit and check again
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.webgazer) {
+          console.log("WebGazer object found after delay");
+          setScriptLoaded(true);
+        } else {
+          console.error("WebGazer object still not available after delay");
+          // Continue with fallback mode
+          setScriptLoaded(true);
+        }
+      }, 1000);
+    }
   };
-  
-  // Используем useCallback для предотвращения повторных рендеров и вызовов - moved outside conditional
-  const handleTestComplete = useCallback((results: ScooterReadinessTestResults) => {
-    if (!testConfig) return; // Exit if no test config
+
+  const handleScriptError = () => {
+    console.error("Failed to load WebGazer script");
+    // Continue anyway - the component will use fallback mode
+    setScriptLoaded(true);
+  };
+
+  const handleTestComplete = (testResults: EyeTrackingTestResults) => {
+    console.log("Test completed with results:", testResults);
+    setResults(testResults);
+    setTestCompleted(true);
     
-    const testResultData: ScooterReadinessResult = {
-      testId: TEST_ID,
-      testName: testConfig.name,
-      timestamp: Date.now(),
-      averageReactionTime: results.averageReactionTime,
-      accuracy: results.accuracy,
-      decisionScore: results.decisionScore,
-      recommendation: results.recommendation,
-      suggestedSpeed: results.suggestedSpeed,
-      safetyTip: results.safetyTip,
-    };
-    addResult(testResultData);
-  }, [testConfig, addResult]);
-
-  if (!testConfig) {
-    return (
-      <div className="p-8 text-center">
-        <h1 className="text-2xl font-bold text-[#7e21cd] mb-4">Ошибка: Конфигурация теста не найдена</h1>
-        <p className="text-gray-700">Не удалось найти конфигурацию для теста с ID: {TEST_ID}</p>
-      </div>
-    );
-  }
-
-  const { name: TEST_NAME, instructions, instructionTitle } = testConfig;
+    // Navigate to results page or show results here
+    setTimeout(() => {
+      router.push('/results');
+    }, 2000);
+  };
 
   return (
-    <TestPageLayout
-      title={TEST_NAME}
-      instructions={instructions}
-      instructionTitle={instructionTitle}
-    >
-      <div className="max-w-4xl mx-auto">
-        <ScooterReadinessTest 
-          onComplete={handleTestComplete} 
-          urentColors={urentColors}
-          gameConfig={gameConfig}
-        />
-        {/* Render the additional info section specific to this test */}
-        {additionalInfoScooter}
-      </div>
-    </TestPageLayout>
+    <div className="container mx-auto px-4 py-8">
+      <Script 
+        src="/webgazer.js"
+        onLoad={handleScriptLoad}
+        onError={handleScriptError}
+        strategy="afterInteractive"
+      />
+      
+      <h1 className="text-3xl font-bold mb-6 text-center">
+        Тест готовности к управлению самокатом
+      </h1>
+
+      {!testCompleted ? (
+        scriptLoaded ? (
+          <EyeTrackingTest onComplete={handleTestComplete} />
+        ) : (
+          <div className="text-center py-10">
+            <p>Загрузка теста...</p>
+            <p className="text-sm text-gray-500 mt-2">Пожалуйста, подождите, идет загрузка компонентов отслеживания глаз</p>
+          </div>
+        )
+      ) : (
+        <div className="text-center py-10">
+          <h2 className="text-2xl font-bold mb-4">Тест завершен!</h2>
+          <p className="mb-2">Переход к результатам...</p>
+          {results && (
+            <div className="mt-4 p-4 bg-gray-100 rounded-lg inline-block">
+              <p>Попаданий: {results.preciseHits} из {results.totalAttempts}</p>
+              <p>Среднее время реакции: {results.averageReactionTime ? 
+                `${Math.round(results.averageReactionTime)}мс` : 
+                'Не определено'}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 } 

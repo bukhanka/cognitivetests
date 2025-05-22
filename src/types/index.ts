@@ -6,7 +6,7 @@ export interface TestResult {
   testName: string;
   timestamp: number;
   // Общие опциональные поля для всех тестов
-  reactionTimes?: number[];
+  reactionTimes?: any; // Make this more flexible
   averageReactionTime?: number;
   passed?: boolean;
   recommendation?: string; // Для тестов, которые дают рекомендации
@@ -58,11 +58,14 @@ export interface NBackTestResult extends TestResult {
 
 // Результат теста на периферийное зрение
 export interface PeripheralVisionResult extends TestResult {
-  noticedCount: number;
-  averageReactionTimeMs: number | null;
-  missedCount: number;
   correctPresses: number;
-  totalStimuli: number;
+  missedCount: number;
+  ageCategory: "young" | "adult" | "senior";
+  reactionTimes: Array<{
+    time: number;
+    side: "left" | "right";
+    correct: boolean;
+  }>;
 }
 
 

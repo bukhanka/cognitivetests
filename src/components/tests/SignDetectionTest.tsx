@@ -107,7 +107,7 @@ const SignDetectionTest: React.FC<TestComponentProps<SignDetectionResult>> = ({ 
                 </p>
                 <button 
                     className="mt-6 bg-[#7e21cd] text-white py-2 px-6 rounded-xl hover:bg-[#5f0f9f] transition"
-                    onClick={() => router.push("/tests")}
+                    onClick={() => router.push("/")}
                 >
                     Продолжить
                 </button>

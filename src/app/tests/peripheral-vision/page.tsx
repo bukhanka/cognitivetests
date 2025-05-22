@@ -22,9 +22,9 @@ type Stimulus = {
 };
 
 const thresholds: Record<AgeCategory, { maxReactionTime: number }> = {
-    young: { maxReactionTime: 600 },
-    adult: { maxReactionTime: 660 },
-    senior: { maxReactionTime: 750 },
+    young: { maxReactionTime: 900 },
+    adult: { maxReactionTime: 1100 },
+    senior: { maxReactionTime: 1300 },
 };
 
 function generateScooters() {
@@ -35,7 +35,7 @@ function generateScooters() {
         return (
             <img
                 key={i}
-                src="/scooter.png"
+                src="/scooters.svg"
                 alt="Scooter"
                 style={{
                     position: "absolute",
@@ -133,9 +133,9 @@ export default function PeripheralVisionPage() {
         const correct = stimuli.filter(s => s.pressedSide === s.side);
         const avgRT = correct.length
             ? Math.round(correct.reduce((sum, s) => sum + (s.reactionTime || 0), 0) / correct.length)
-            : null;
+            : undefined;
         const missed = stimuli.filter(s => s.reactionTime === null);
-        const passed = category && avgRT !== null && avgRT <= thresholds[category].maxReactionTime;
+        const passed = category && avgRT !== undefined && avgRT <= (category ? thresholds[category].maxReactionTime : 0);
 
         const result: PeripheralVisionResult = {
             testId: TEST_ID,
@@ -157,7 +157,7 @@ export default function PeripheralVisionPage() {
         setState("completed");
     };
 
-    const renderModal = (content: JSX.Element) => (
+    const renderModal = (content: React.ReactNode) => (
         <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-purple-600 to-purple-400 bg-opacity-90 z-50 overflow-hidden">
             {generateScooters()}
             <div className="bg-white text-center rounded-2xl shadow-xl p-6 w-full max-w-md z-10">
@@ -224,20 +224,20 @@ export default function PeripheralVisionPage() {
             const correct = stimuli.filter(s => s.pressedSide === s.side);
             const avgRT = correct.length
                 ? Math.round(correct.reduce((sum, s) => sum + (s.reactionTime || 0), 0) / correct.length)
-                : 0;
+                : undefined;
             const missed = stimuli.filter(s => s.reactionTime === null);
-            const passed = category && avgRT <= thresholds[category].maxReactionTime;
+            const passed = category && avgRT !== undefined && avgRT <= (category ? thresholds[category].maxReactionTime : 0);
 
             return renderModal(
                 <>
                     <h2 className="text-xl font-semibold mb-4">Результаты</h2>
                     <p>Замечено стимулов: {correct.length} из 3</p>
-                    <p>Среднее время реакции: {avgRT} мс</p>
+                    <p>Среднее время реакции: {avgRT || "Н/Д"} мс</p>
                     <p>Пропущено: {missed.length}</p>
                     <p className={`mt-4 font-bold ${passed ? "text-green-600" : "text-red-600"}`}>
                         {passed ? "✅ Тест пройден! Можно ехать" : "⚠️ Рекомендуем выбрать другой транспорт"}
                     </p>
-                    <button className="mt-6 bg-purple-600 text-white py-2 px-6 rounded-xl" onClick={() => router.push("/tests")}>Продолжить</button>
+                    <button className="mt-6 bg-purple-600 text-white py-2 px-6 rounded-xl" onClick={() => router.push("/")}>Продолжить</button>
                 </>
             );
         }

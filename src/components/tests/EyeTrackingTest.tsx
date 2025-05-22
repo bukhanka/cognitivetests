@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { TestComponentProps } from "@/types";
 import { useEyeTrackingTest, EyeTrackingTestResults } from "@/hooks/useEyeTrackingTest";
 
@@ -11,8 +11,8 @@ interface EyeTrackingTestProps extends TestComponentProps<EyeTrackingTestResults
 
 const DOT_SIZE_PX = 40;
 const TARGET_RADIUS = 100;
-const TEST_DURATION_SECONDS = 10;
-const TOTAL_DOTS = 3;
+const TEST_DURATION_SECONDS = 15;
+const TOTAL_DOTS = 5;
 const PAUSE_BETWEEN_DOTS_MS = 1000;
 
 const EyeTrackingTest: React.FC<EyeTrackingTestProps> = ({ onComplete }) => {
@@ -39,6 +39,17 @@ const EyeTrackingTest: React.FC<EyeTrackingTestProps> = ({ onComplete }) => {
     testDurationSeconds: TEST_DURATION_SECONDS,
     pauseBetweenDotsMs: PAUSE_BETWEEN_DOTS_MS
   });
+
+  // Add a useEffect to check if webgazer is loaded globally
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (window.webgazer) {
+        console.log("WebGazer found from component");
+      } else {
+        console.warn("WebGazer not found from component, using fallback mode");
+      }
+    }
+  }, []);
 
   // Helper function to determine the input mode text
   const getInputModeText = () => {
@@ -119,7 +130,7 @@ const EyeTrackingTest: React.FC<EyeTrackingTestProps> = ({ onComplete }) => {
       
       {(useFallbackMode || useForceTouch) && (
         <div style={{ marginBottom: '20px', backgroundColor: '#FEFED5', padding: '10px', borderRadius: '5px', maxWidth: '600px' }}>
-          <p><strong>Режим тестирования с {getInputModeText()} включен.</strong></p>
+          <p><strong>Режим тестирования с использованием {getInputModeText()} включен.</strong></p>
           <p>Вам нужно будет {isMobile ? 'нажимать/касаться' : 'нажимать на'} появляющиеся точки.</p>
         </div>
       )}
@@ -172,6 +183,43 @@ const EyeTrackingTest: React.FC<EyeTrackingTestProps> = ({ onComplete }) => {
     </div>
   );
 
+  const renderCalibration = () => (
+    <div
+      ref={testAreaRef}
+      style={{
+        width: "100%",
+        minHeight: "70vh", 
+        height: "calc(100vh - 200px)",
+        position: "relative",
+        backgroundColor: "white",
+        border: "1px solid #ccc",
+        borderRadius: "8px",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div style={{ 
+        position: "absolute", 
+        top: "20px", 
+        left: "50%", 
+        transform: "translateX(-50%)",
+        textAlign: "center",
+        padding: "10px",
+        backgroundColor: "rgba(106, 13, 173, 0.1)",
+        borderRadius: "8px",
+        maxWidth: "80%"
+      }}>
+        <h3 style={{ margin: "0 0 10px 0", color: "#6a0dad" }}>Калибровка системы отслеживания взгляда</h3>
+        <p style={{ margin: "0", fontSize: "1.1rem" }}>
+          Пожалуйста, <strong>смотрите на красные точки</strong>, когда они появляются
+        </p>
+      </div>
+    </div>
+  );
+
   const renderTesting = () => (
     <div
       ref={testAreaRef}
@@ -190,24 +238,6 @@ const EyeTrackingTest: React.FC<EyeTrackingTestProps> = ({ onComplete }) => {
         <p style={{ textAlign: 'center', padding: '20px' }}>Загрузка отслеживания глаз...</p>
       )}
       
-      {dotPosition && (
-        <div
-          style={{
-            position: "absolute",
-            left: `${dotPosition.x}px`,
-            top: `${dotPosition.y}px`,
-            width: `${dotSize}px`,
-            height: `${dotSize}px`,
-            backgroundColor: "rgba(106, 13, 173, 0.5)", // Purple, semi-transparent
-            borderRadius: "50%",
-            animation: "fadeIn 0.3s ease-out",
-            cursor: useFallbackMode || isMobile || useForceTouch ? "pointer" : "default",
-            zIndex: 100, // Ensure dot is on top
-          }}
-          onClick={handleDotClick}
-          onTouchStart={handleDotClick}
-        />
-      )}
       <style jsx global>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: scale(0.8); }
@@ -216,7 +246,7 @@ const EyeTrackingTest: React.FC<EyeTrackingTestProps> = ({ onComplete }) => {
         #webgazerVideoFeed,\
         #webgazerFaceOverlay,\
         #webgazerFaceFeedbackBox {
-             ${showWebgazerVideo && phase === "intro" && webgazerReady && !useFallbackMode ? '' : 'display: none !important;'}
+             ${showWebgazerVideo && (phase === "intro" || phase === "calibration") && webgazerReady && !useFallbackMode ? '' : 'display: none !important;'}
         }
         /* Allow default prediction point to show */
         .webgazerGazeDot {
@@ -224,18 +254,25 @@ const EyeTrackingTest: React.FC<EyeTrackingTestProps> = ({ onComplete }) => {
           z-index: 999 !important;
           pointer-events: none !important;
         }
-        /* Style our custom dot */
-        .customGazeDot {
-          display: block !important;
-          position: fixed !important;
-          z-index: 1000 !important;
-          pointer-events: none !important;
+        /* Style for calibration and test dots */
+        .calibration-dot, .test-dot {
+          position: absolute;
+          border-radius: 50%;
+          z-index: 100;
+        }
+        .calibration-dot {
+          background-color: red;
+        }
+        .test-dot {
+          background-color: rgba(106, 13, 173, 0.5);
+          animation: fadeIn 0.3s ease-out;
         }
       `}</style>
     </div>
   );
 
   if (phase === "intro") return renderIntro();
+  if (phase === "calibration") return renderCalibration();
   if (phase === "testing") return renderTesting();
   
   // For "results" phase

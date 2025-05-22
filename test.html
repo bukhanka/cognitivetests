@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Тест внимания</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #fff;
+    }
+
+    .dot {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      background-color: red;
+      border-radius: 50%;
+      z-index: 5;
+    }
+
+    #result {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+      font-weight: bold;
+      z-index: 10;
+    }
+
+    #start {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      padding: 10px 20px;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    #webgazerVideoFeed {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 640px;
+      height: 480px;
+      z-index: 1;
+      border: 2px solid #000;
+      border-radius: 8px;
+    }
+  </style>
+
+  <script src="webgazer.js" defer></script>
+</head>
+<body>
+
+<button id="start">Начать тест</button>
+<div id="result"></div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const totalDots = 10;
+    const maxReactionTime = 200; // 0.2 секунды
+    let dotCount = 0;
+    let fastReactions = 0;
+    let startTime;
+    let currentDot;
+
+    const startBtn = document.getElementById("start");
+    const resultDiv = document.getElementById("result");
+
+    const calibrationPoints = [
+      [50, 50],   // top-left
+      [window.innerWidth - 50, 50],   // top-right
+      [window.innerWidth / 2, window.innerHeight / 2], // center
+      [50, window.innerHeight - 50],  // bottom-left
+      [window.innerWidth - 50, window.innerHeight - 50], // bottom-right
+      [window.innerWidth / 2, 50],    // top-center
+    ];
+
+    let calibrationIndex = 0;
+
+    function createCalibrationDot(x, y) {
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      dot.style.left = `${x}px`;
+      dot.style.top = `${y}px`;
+      document.body.appendChild(dot);
+
+      setTimeout(() => {
+        webgazer.recordScreenPosition(x, y, 'click'); // обучаем модель
+        dot.remove();
+        calibrationIndex++;
+        if (calibrationIndex < calibrationPoints.length) {
+          setTimeout(() => {
+            const [nextX, nextY] = calibrationPoints[calibrationIndex];
+            createCalibrationDot(nextX, nextY);
+          }, 700);
+        } else {
+          setTimeout(showDot, 1000); // переходим к тесту
+        }
+      }, 1000); // ждём, чтобы пользователь посмотрел
+    }
+
+    function startCalibration() {
+      calibrationIndex = 0;
+      const [x, y] = calibrationPoints[calibrationIndex];
+      createCalibrationDot(x, y);
+    }
+
+    function showDot() {
+      if (currentDot) currentDot.remove();
+
+      if (dotCount >= totalDots) return finishTest();
+
+      currentDot = document.createElement("div");
+      currentDot.className = "dot";
+
+      const x = Math.random() * (window.innerWidth - 60) + 30;
+      const y = Math.random() * (window.innerHeight - 60) + 30;
+      currentDot.style.left = `${x}px`;
+      currentDot.style.top = `${y}px`;
+      document.body.appendChild(currentDot);
+
+      startTime = Date.now();
+      dotCount++;
+      trackGaze(x, y);
+    }
+
+    function trackGaze(dotX, dotY) {
+      function check() {
+        webgazer.getCurrentPrediction().then(pred => {
+          if (pred) {
+            const dx = pred.x - dotX;
+            const dy = pred.y - dotY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 100) {
+              const reactionTime = Date.now() - startTime;
+              if (reactionTime <= maxReactionTime) {
+                fastReactions++;
+              }
+              currentDot.remove();
+              currentDot = null;
+              setTimeout(showDot, 500);
+              return;
+            }
+          }
+          requestAnimationFrame(check);
+        });
+      }
+      check();
+    }
+
+    function finishTest() {
+      const percent = (fastReactions / totalDots) * 100;
+      resultDiv.textContent = percent >= 80
+        ? "Тест пройден ✅"
+        : "Тест не пройден ❌";
+      webgazer.end();
+      startBtn.style.display = "block";
+      startBtn.textContent = "Попробовать снова";
+    }
+
+    function styleCameraFeed() {
+      const video = document.getElementById("webgazerVideoFeed");
+      if (video) {
+        video.style.position = "fixed";
+        video.style.top = "50%";
+        video.style.left = "50%";
+        video.style.transform = "translate(-50%, -50%)";
+        video.style.width = "640px";
+        video.style.height = "480px";
+        video.style.zIndex = "1";
+        video.style.border = "2px solid black";
+        video.style.borderRadius = "8px";
+      } else {
+        setTimeout(styleCameraFeed, 300);
+      }
+    }
+
+    function startTest() {
+      startBtn.style.display = "none";
+      resultDiv.textContent = "";
+      dotCount = 0;
+      fastReactions = 0;
+
+      webgazer.setRegression('ridge')
+        .setTracker('clmtrackr')
+        .begin()
+        .then(() => {
+          webgazer.showFaceOverlay(false);
+          webgazer.showFaceFeedbackBox(false);
+          webgazer.showVideo(true);
+          styleCameraFeed();
+
+          alert("Разрешите доступ к камере. Далее будет калибровка: смотрите на точки.");
+          setTimeout(startCalibration, 1500);
+        });
+    }
+
+    startBtn.addEventListener("click", startTest);
+  });
+</script>
+
+</body>
+</html>
