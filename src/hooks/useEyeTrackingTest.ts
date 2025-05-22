@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // Add WebGazer to Window interface for typechecking
 declare global {
   interface Window {
-    webgazer?: any;
+    webgazer?: unknown;
   }
 }
 
@@ -35,12 +35,12 @@ export function useEyeTrackingTest({
   pauseBetweenDotsMs = 1000,
   disableWebgazer = false,
 }: UseEyeTrackingTestParams) {
-  const [phase, setPhase] = useState<"intro" | "calibration" | "testing" | "results">("intro");
+  const [phase, setPhase] = useState<"intro" | "testing" | "results">("intro");
   const [dotPosition, setDotPosition] = useState<{ x: number; y: number } | null>(null);
   const [currentDot, setCurrentDot] = useState(0);
   const [reactionTimes, setReactionTimes] = useState<number[]>([]);
   const [preciseHits, setPreciseHits] = useState(0);
-  const [webgazerInstance, setWebgazerInstance] = useState<any>(null);
+  const [webgazerInstance, setWebgazerInstance] = useState<unknown>(null);
   const [webgazerReady, setWebgazerReady] = useState(false);
   const [showWebgazerVideo, setShowWebgazerVideo] = useState(false);
   const [webgazerError, setWebgazerError] = useState<string | null>(null);
@@ -48,20 +48,11 @@ export function useEyeTrackingTest({
   const [initializationAttempted, setInitializationAttempted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [useForceTouch, setUseForceTouch] = useState(false); // For devices with both mouse and touch
-  const [calibrationIndex, setCalibrationIndex] = useState(0);
 
   const testAreaRef = useRef<HTMLDivElement | null>(null);
   const dotStartTimeRef = useRef<number | null>(null);
   const testTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dotTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const calibrationPointsRef = useRef<Array<[number, number]>>([]);
-  const currentDotRef = useRef<HTMLDivElement | null>(null);
-
-  // Forward declarations
-  const trackGaze = useCallback((_dotX: number, _dotY: number): void => {}, []);
-  const handleDotClick = useCallback((): void => {}, []);
-  let showDot: () => void;
 
   // Detect mobile device and set fallback mode if needed
   useEffect(() => {
@@ -113,40 +104,22 @@ export function useEyeTrackingTest({
     }
   }, [useFallbackMode]);
 
-  // Initialize calibration points based on test area dimensions
-  const initCalibrationPoints = useCallback(() => {
-    if (testAreaRef.current) {
-      const { offsetWidth: width, offsetHeight: height } = testAreaRef.current;
-      const margin = 50;
-
-      const points: Array<[number, number]> = [
-        [margin, margin], // top-left
-        [width - margin, margin], // top-right
-        [width / 2, height / 2], // center
-        [margin, height - margin], // bottom-left
-        [width - margin, height - margin], // bottom-right
-        [width / 2, margin], // top-center
-      ];
+  const copyWebGazerFiles = useCallback(async () => {
+    // Check if we need to copy WebGazer worker files to the public directory
+    try {
+      // First, check if the worker file is accessible
+      const response = await fetch('/tests/ridgeWorker.mjs');
       
-      calibrationPointsRef.current = points;
-      console.log("Initialized calibration points:", points);
-    } else {
-      // Default fallback if testAreaRef isn't ready
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      const margin = 50;
+      if (response.ok) {
+        console.log("WebGazer worker files already accessible in /tests/ directory");
+        return true;
+      }
       
-      const points: Array<[number, number]> = [
-        [margin, margin], // top-left
-        [width - margin, margin], // top-right
-        [width / 2, height / 2], // center
-        [margin, height - margin], // bottom-left
-        [width - margin, height - margin], // bottom-right
-        [width / 2, margin], // top-center
-      ];
-      
-      calibrationPointsRef.current = points;
-      console.log("Using window dimensions for calibration points:", points);
+      console.log("WebGazer worker files not found in /tests/ directory, using fallback");
+      return false;
+    } catch (error) {
+      console.error("Error checking WebGazer worker files:", error);
+      return false;
     }
   }, []);
 
@@ -155,38 +128,127 @@ export function useEyeTrackingTest({
       setInitializationAttempted(true);
       
       try {
-        console.log("Trying to initialize webgazer...");
-        if (!window.webgazer) {
-          console.warn("WebGazer not found on window object. Trying again in 1 second...");
-          
-          // Try again after a short delay
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          if (!window.webgazer) {
-            throw new Error("WebGazer is not available on window object after waiting");
-          }
-          console.log("WebGazer found after waiting");
+        // First check if worker files are accessible
+        const workersAccessible = await copyWebGazerFiles();
+        
+        if (!workersAccessible) {
+          console.log("Using simpler regression model due to worker files unavailability");
         }
         
-        console.log("WebGazer found, setting up...");
+        console.log("Trying to import webgazer...");
+        const webgazerModule = await import("webgazer");
+        if (!webgazerModule || !webgazerModule.default) {
+          throw new Error("WebGazer module could not be loaded");
+        }
         
-        // Store the instance first
-        setWebgazerInstance(window.webgazer);
+        const webgazer = webgazerModule.default;
+        // Make webgazer instance available globally for its internal calls if that helps.
+        window.webgazer = webgazer;
+        console.log("WebGazer imported successfully, setting up...");
         
-        // Exactly match working test.html initialization
-        window.webgazer.setRegression('ridge')
-               .setTracker('clmtrackr');
+        // Use a simpler regression if workers aren't available
+        const regressionMethod = workersAccessible ? 'threadedRidge' : 'ridge';
+        console.log(`Using ${regressionMethod} regression method`);
+        webgazer.setRegression(regressionMethod);
+
+        // Explicitly configure the prediction point appearance
+        const setPredictionPointStyle = () => {
+          const existingPoint = document.querySelector('.webgazerGazeDot') as HTMLElement;
+          if (existingPoint) {
+            // Point exists, update its style
+            Object.assign(existingPoint.style, {
+              display: 'block',
+              position: 'fixed',
+              zIndex: '1000',
+              width: '20px',
+              height: '20px',
+              borderRadius: '50%',
+              backgroundColor: 'red',
+              opacity: '0.7',
+              pointerEvents: 'none'
+            });
+            console.log("Existing prediction point style updated");
+          } else {
+            // Create a custom point if needed
+            const customPoint = document.createElement('div');
+            customPoint.className = 'webgazerGazeDot customGazeDot';
+            Object.assign(customPoint.style, {
+              display: 'block',
+              position: 'fixed',
+              zIndex: '1000',
+              width: '20px',
+              height: '20px',
+              left: '0px',
+              top: '0px',
+              borderRadius: '50%',
+              backgroundColor: 'red',
+              opacity: '0.7',
+              pointerEvents: 'none'
+            });
+            document.body.appendChild(customPoint);
+            console.log("Custom prediction point created");
+          }
+        };
         
+        // Hide video and preview by default, user can enable if needed for calibration
+        webgazer.showVideo(false);
+        webgazer.showPredictionPoints(true); // Always show prediction points
+        webgazer.showFaceOverlay(false);
+        webgazer.showFaceFeedbackBox(false);
+
         console.log("Starting WebGazer...");
-        await window.webgazer.begin();
+        await webgazer.begin();
         console.log("WebGazer started successfully!");
         
-        // Configure after successful initialization like in test.html
-        window.webgazer.showFaceOverlay(false);
-        window.webgazer.showFaceFeedbackBox(false);
-        window.webgazer.showVideo(true);
-        window.webgazer.showPredictionPoints(true);
+        // Apply our styles after WebGazer is initialized
+        setTimeout(setPredictionPointStyle, 500);
         
+        // Create a global gaze listener that will update our point
+        const setupGlobalGazeListener = () => {
+          // Get our custom point or create it if it doesn't exist
+          let customPoint = document.querySelector('.customGazeDot') as HTMLElement;
+          if (!customPoint) {
+            customPoint = document.createElement('div');
+            customPoint.className = 'webgazerGazeDot customGazeDot';
+            Object.assign(customPoint.style, {
+              display: 'block',
+              position: 'fixed',
+              zIndex: '1000',
+              width: '20px',
+              height: '20px',
+              left: '50%', // Start in middle of screen
+              top: '50%',
+              transform: 'translate(-50%, -50%)', // Center the dot
+              borderRadius: '50%',
+              backgroundColor: 'red',
+              opacity: '0.7',
+              pointerEvents: 'none',
+              border: '2px solid white' // Add border for better visibility
+            });
+            document.body.appendChild(customPoint);
+          }
+          
+          // Setup a global gaze listener that will keep updating our point
+          webgazer.setGazeListener((data: { x: number; y: number } | null) => {
+            if (data && !isNaN(data.x) && !isNaN(data.y)) {
+              // Log only 5% of gaze positions to avoid console spam
+              if (Math.random() < 0.05) {
+                console.log(`Gaze position: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
+              }
+              customPoint.style.left = `${data.x - 10}px`;
+              customPoint.style.top = `${data.y - 10}px`;
+              customPoint.style.transform = ''; // Remove centering transform
+            } else if (data) {
+              console.log("Invalid gaze data received:", data);
+            }
+          });
+          console.log("Global gaze listener setup");
+        };
+        
+        // Setup global gaze listener after a longer delay to ensure WebGazer is fully initialized
+        setTimeout(setupGlobalGazeListener, 2000);
+        
+        setWebgazerInstance(webgazer);
         setWebgazerReady(true);
         setWebgazerError(null);
       } catch (error) {
@@ -194,288 +256,9 @@ export function useEyeTrackingTest({
         const errorMessage = error instanceof Error ? error.message : String(error);
         setWebgazerError(`Eye tracking couldn't initialize: ${errorMessage}`);
         setWebgazerReady(false);
-        
-        // Automatically fall back to mouse/touch mode
-        console.log("Enabling fallback mode due to initialization error");
-        setUseFallbackMode(true);
       }
     }
-  }, [webgazerInstance, useFallbackMode]);
-
-  const getRandomPosition = useCallback(() => {
-    if (testAreaRef.current) {
-      const { offsetWidth, offsetHeight } = testAreaRef.current;
-      // Ensure dot is fully visible within the bounds
-      const x = Math.random() * (offsetWidth - dotSize - 10) + 5;
-      const y = Math.random() * (offsetHeight - dotSize - 10) + 5;
-      console.log(`Generated new dot position: ${x}, ${y} in area ${offsetWidth}x${offsetHeight}`);
-      return { x, y };
-    }
-    // Default fallback position - more centered to ensure visibility
-    console.log("Using fallback position since test area ref is not available");
-    return { x: 100, y: 100 };
-  }, [dotSize]);
-
-  // Implementation of trackGaze - from test.html approach
-  const realTrackGaze = useCallback((dotX: number, dotY: number) => {
-    const check = () => {
-      if (!webgazerInstance || phase !== "testing") return;
-      
-      webgazerInstance.getCurrentPrediction().then((pred: any) => {
-        if (!pred) {
-          animationFrameRef.current = requestAnimationFrame(check);
-          return;
-        }
-        
-        // Simple calculation like in test.html - don't add dotSize/2
-        const dx = pred.x - dotX;
-        const dy = pred.y - dotY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        console.log(`Eye position: ${pred.x}, ${pred.y}, distance: ${dist}`);
-        
-        if (dist < targetRadius) {
-          const reactionTime = Date.now() - dotStartTimeRef.current!;
-          console.log(`Gaze hit detected! Distance: ${dist}px, reaction time: ${reactionTime}ms`);
-          
-          setReactionTimes(prev => [...prev, reactionTime]);
-          setPreciseHits(prev => prev + 1);
-          
-          if (currentDotRef.current && currentDotRef.current.parentNode) {
-            currentDotRef.current.parentNode.removeChild(currentDotRef.current);
-            currentDotRef.current = null;
-          }
-          
-          setDotPosition(null);
-          dotStartTimeRef.current = null;
-          
-          if (dotTimerRef.current) clearTimeout(dotTimerRef.current);
-          dotTimerRef.current = setTimeout(showDot, pauseBetweenDotsMs);
-          return;
-        }
-        
-        // Continue checking if no hit detected
-        animationFrameRef.current = requestAnimationFrame(check);
-      });
-    };
-    
-    // Start checking
-    check();
-  }, [webgazerInstance, phase, targetRadius, pauseBetweenDotsMs]);
-
-  // Create a calibration dot (similar to test.html approach)
-  const createCalibrationDot = useCallback((x: number, y: number) => {
-    if (currentDotRef.current && currentDotRef.current.parentNode) {
-      currentDotRef.current.parentNode.removeChild(currentDotRef.current);
-    }
-
-    const dot = document.createElement("div");
-    dot.className = "calibration-dot";
-    Object.assign(dot.style, {
-      position: "absolute",
-      width: `${dotSize}px`,
-      height: `${dotSize}px`,
-      left: `${x}px`,
-      top: `${y}px`,
-      backgroundColor: "red",
-      borderRadius: "50%",
-      zIndex: "1000"
-    });
-    
-    if (testAreaRef.current) {
-      testAreaRef.current.appendChild(dot);
-    } else {
-      document.body.appendChild(dot);
-    }
-    
-    currentDotRef.current = dot;
-    
-    // Match the test.html timing - record after 1 second
-    setTimeout(() => {
-      if (webgazerInstance) {
-        console.log(`Recording calibration point at ${x},${y}`);
-        webgazerInstance.recordScreenPosition(x, y, 'click');
-      }
-      
-      // Remove dot and advance to next calibration point
-      if (dot.parentNode) {
-        dot.parentNode.removeChild(dot);
-      }
-      
-      setCalibrationIndex(prev => {
-        const newIndex = prev + 1;
-        
-        if (newIndex < calibrationPointsRef.current.length) {
-          // Move to next calibration point with same timing as test.html
-          setTimeout(() => {
-            const [nextX, nextY] = calibrationPointsRef.current[newIndex];
-            createCalibrationDot(nextX, nextY);
-          }, 700);
-        } else {
-          // Finished calibration, move to testing phase
-          setTimeout(() => {
-            console.log("Calibration complete, starting test");
-            startTesting();
-          }, 1000);
-        }
-        
-        return newIndex;
-      });
-    }, 1000); // Match test.html timing - 1000ms
-  }, [webgazerInstance, dotSize]);
-
-  // Implementation of showDot - define first as a function then assign to showDot
-  const realShowDot = () => {
-    if (currentDotRef.current && currentDotRef.current.parentNode) {
-      currentDotRef.current.parentNode.removeChild(currentDotRef.current);
-      currentDotRef.current = null;
-    }
-
-    if (currentDot >= totalDots) {
-      console.log("All dots displayed, moving to results phase");
-      setPhase("results");
-      return;
-    }
-
-    const pos = getRandomPosition();
-    console.log(`Showing dot ${currentDot + 1}/${totalDots} at position:`, pos);
-    
-    const dot = document.createElement("div");
-    dot.className = "test-dot";
-    Object.assign(dot.style, {
-      position: "absolute",
-      width: `${dotSize}px`,
-      height: `${dotSize}px`,
-      left: `${pos.x}px`,
-      top: `${pos.y}px`,
-      backgroundColor: "rgba(106, 13, 173, 0.5)",
-      borderRadius: "50%",
-      zIndex: "100",
-      cursor: (useFallbackMode || isMobile || useForceTouch) ? "pointer" : "default",
-    });
-    
-    // Add click handler for fallback mode
-    if (useFallbackMode || isMobile || useForceTouch) {
-      dot.addEventListener("click", handleDotClick);
-      dot.addEventListener("touchstart", handleDotClick);
-    }
-    
-    if (testAreaRef.current) {
-      testAreaRef.current.appendChild(dot);
-    } else {
-      document.body.appendChild(dot);
-    }
-    
-    currentDotRef.current = dot;
-    setDotPosition(pos);
-    dotStartTimeRef.current = Date.now();
-    setCurrentDot(prev => prev + 1);
-    
-    if (!useFallbackMode && webgazerInstance) {
-      // Use trackGaze without adjustments to match test.html approach
-      realTrackGaze(pos.x, pos.y);
-    }
-  };
-
-  // Assign to the declared variable
-  showDot = realShowDot;
-
-  // Implementation of startTesting
-  const startTesting = useCallback(() => {
-    setShowWebgazerVideo(false); // Ensure video is hidden once test starts
-    if (webgazerInstance && !useFallbackMode) {
-      // Explicitly hide all visual elements of WebGazer except prediction points
-      webgazerInstance.showVideo(false);
-      webgazerInstance.showPredictionPoints(true); // Keep prediction points visible
-      webgazerInstance.showFaceOverlay(false);
-      webgazerInstance.showFaceFeedbackBox(false);
-    }
-    
-    console.log("Starting test in mode:", useFallbackMode ? "fallback (mouse/touch)" : "eye tracking");
-    setPhase("testing");
-    setCurrentDot(0);
-    setReactionTimes([]);
-    setPreciseHits(0);
-    
-    // Start the test after a short delay
-    setTimeout(() => {
-      showDot();
-      
-      // Overall test timer
-      if (testTimerRef.current) clearTimeout(testTimerRef.current);
-      testTimerRef.current = setTimeout(() => {
-        setPhase("results");
-      }, testDurationSeconds * 1000 + (totalDots * pauseBetweenDotsMs)); // Adjust duration if needed
-    }, 100); // Short delay
-  }, [webgazerInstance, useFallbackMode, testDurationSeconds, totalDots, pauseBetweenDotsMs]);
-
-  // Implementation of startCalibration
-  const startCalibration = useCallback(() => {
-    console.log("Starting calibration sequence");
-    setPhase("calibration");
-    setCalibrationIndex(0);
-    initCalibrationPoints();
-    
-    // Start with the first calibration point
-    const [x, y] = calibrationPointsRef.current[0];
-    createCalibrationDot(x, y);
-  }, [createCalibrationDot, initCalibrationPoints]);
-
-  // Update forward declared function with real implementation
-  Object.assign(handleDotClick, useCallback(() => {
-    if (dotStartTimeRef.current && (useFallbackMode || isMobile || useForceTouch)) {
-      const reactionTime = Date.now() - dotStartTimeRef.current;
-      console.log(`Dot clicked in fallback mode, reaction time: ${reactionTime}ms`);
-      
-      setReactionTimes(prev => [...prev, reactionTime]);
-      setPreciseHits(prev => prev + 1);
-      
-      if (currentDotRef.current && currentDotRef.current.parentNode) {
-        currentDotRef.current.parentNode.removeChild(currentDotRef.current);
-        currentDotRef.current = null;
-      }
-      
-      setDotPosition(null);
-      dotStartTimeRef.current = null;
-      
-      if (dotTimerRef.current) clearTimeout(dotTimerRef.current);
-      dotTimerRef.current = setTimeout(showDot, pauseBetweenDotsMs);
-    }
-  }, [useFallbackMode, isMobile, useForceTouch, pauseBetweenDotsMs]));
-
-  // Update trackGaze reference with real implementation
-  Object.assign(trackGaze, realTrackGaze);
-
-  const startTest = useCallback(() => {
-    if (webgazerReady && !useFallbackMode) {
-      startCalibration();
-    } else {
-      // If using fallback mode or webgazer not ready, skip calibration
-      startTesting();
-    }
-  }, [webgazerReady, useFallbackMode, startCalibration, startTesting]);
-
-  const toggleCalibrationVisuals = useCallback(() => {
-    if (webgazerInstance && webgazerReady && !useFallbackMode) {
-      const newVisibility = !showWebgazerVideo;
-      setShowWebgazerVideo(newVisibility);
-    }
-  }, [webgazerInstance, webgazerReady, useFallbackMode, showWebgazerVideo]);
-
-  const enableFallbackMode = useCallback(() => {
-    console.log("Enabling fallback mode (mouse/touch based)");
-    setUseFallbackMode(true);
-    setWebgazerError(null);
-    
-    // If there's a webgazer instance, clean it up
-    if (webgazerInstance) {
-      console.log("Ending WebGazer instance (fallback mode enabled)");
-      webgazerInstance.end();
-      setWebgazerInstance(null);
-    }
-    
-    setWebgazerReady(false);
-  }, [webgazerInstance]);
+  }, [webgazerInstance, useFallbackMode, copyWebGazerFiles]);
 
   // Initial attempt to start WebGazer
   useEffect(() => {
@@ -486,59 +269,194 @@ export function useEyeTrackingTest({
     }
   }, [phase, startWebgazer, initializationAttempted, useFallbackMode]);
 
-  // Cleanup effect
   useEffect(() => {
+    if (phase === "testing" && !webgazerReady && !useFallbackMode) {
+      startWebgazer();
+    }
+
     return () => {
-      // Cleanup WebGazer when component unmounts
-      if (webgazerInstance) {
+      // Cleanup WebGazer when component unmounts or phase changes from testing
+      if (webgazerInstance && phase !== "testing") {
         console.log("Ending WebGazer instance (cleanup)");
-        webgazerInstance.end(); 
+        (webgazerInstance as any).end(); 
       }
       if (testTimerRef.current) clearTimeout(testTimerRef.current);
       if (dotTimerRef.current) clearTimeout(dotTimerRef.current);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      if (currentDotRef.current && currentDotRef.current.parentNode) {
-        currentDotRef.current.parentNode.removeChild(currentDotRef.current);
-      }
     };
-  }, [webgazerInstance]);
+  }, [phase, webgazerInstance, webgazerReady, startWebgazer, useFallbackMode]);
 
   useEffect(() => {
     // This effect manages the default visibility of WebGazer elements
     if (webgazerInstance) {
-      const shouldShowCalibrationVisuals = (phase === "intro" || phase === "calibration") && webgazerReady && !useFallbackMode && showWebgazerVideo;
+      const shouldShowCalibrationVisuals = phase === "intro" && webgazerReady && !useFallbackMode;
       
-      webgazerInstance.showVideo(shouldShowCalibrationVisuals);
-      webgazerInstance.showPredictionPoints(true); // Always show prediction points
-      webgazerInstance.showFaceOverlay(shouldShowCalibrationVisuals);
-      webgazerInstance.showFaceFeedbackBox(shouldShowCalibrationVisuals);
+      (webgazerInstance as any).showVideo(shouldShowCalibrationVisuals);
+      (webgazerInstance as any).showPredictionPoints(true);
+      (webgazerInstance as any).showFaceOverlay(shouldShowCalibrationVisuals);
+      (webgazerInstance as any).showFaceFeedbackBox(shouldShowCalibrationVisuals);
+      setShowWebgazerVideo(shouldShowCalibrationVisuals);
     }
-  }, [phase, webgazerReady, webgazerInstance, useFallbackMode, showWebgazerVideo]);
+  }, [phase, webgazerReady, webgazerInstance, useFallbackMode]);
 
-  // Fallback timeout for dots
+  const getRandomPosition = useCallback(() => {
+    if (testAreaRef.current) {
+      const { offsetWidth, offsetHeight } = testAreaRef.current;
+      // Ensure dot is fully visible within the bounds
+      const x = Math.random() * (offsetWidth - dotSize);
+      const y = Math.random() * (offsetHeight - dotSize);
+      console.log(`Generated new dot position: ${x}, ${y} in area ${offsetWidth}x${offsetHeight}`);
+      return { x, y };
+    }
+    // Default fallback position - more centered to ensure visibility
+    console.log("Using fallback position since test area ref is not available");
+    return { x: 100, y: 100 };
+  }, [dotSize]);
+
+  const showNextDot = useCallback(() => {
+    if (currentDot < totalDots) {
+      const pos = getRandomPosition();
+      console.log(`Showing dot ${currentDot + 1}/${totalDots} at position:`, pos);
+      setDotPosition(pos);
+      dotStartTimeRef.current = performance.now();
+      setCurrentDot(prev => prev + 1);
+    } else {
+      console.log("All dots displayed, moving to results phase");
+      setPhase("results");
+    }
+  }, [currentDot, totalDots, getRandomPosition]);
+
+  // Handle dot click for fallback mode and touch devices
+  const handleDotClick = useCallback(() => {
+    if (dotStartTimeRef.current && (useFallbackMode || isMobile || useForceTouch)) {
+      const reactionTime = performance.now() - dotStartTimeRef.current;
+      console.log(`Dot clicked in fallback mode, reaction time: ${reactionTime}ms`);
+      setReactionTimes(prev => [...prev, reactionTime]);
+      setPreciseHits(prev => prev + 1);
+      setDotPosition(null);
+      dotStartTimeRef.current = null;
+      
+      if (dotTimerRef.current) clearTimeout(dotTimerRef.current);
+      dotTimerRef.current = setTimeout(showNextDot, pauseBetweenDotsMs);
+    }
+  }, [useFallbackMode, showNextDot, isMobile, pauseBetweenDotsMs, useForceTouch]);
+
   useEffect(() => {
-    if (phase === "testing" && dotPosition && (useFallbackMode || isMobile)) {
+    if (phase === "testing" && webgazerReady && webgazerInstance && dotPosition && !useFallbackMode) {
+      console.log("Setting up gaze listener for dot at:", dotPosition);
+      
+      // We'll only check for gaze hits, not update the dot position
+      // as that's handled by our global gaze listener
+      
+      (webgazerInstance as any).resume(); // Ensure it's resumed
+      
+      // Create a local function to check for hits
+      const checkForGazeHits = (data: { x: number; y: number }) => {
+        if (data && !isNaN(data.x) && !isNaN(data.y) && dotPosition && dotStartTimeRef.current) {
+          const gazeX = data.x;
+          const gazeY = data.y;
+
+          const distance = Math.sqrt(
+            Math.pow(gazeX - (dotPosition.x + dotSize / 2), 2) +
+            Math.pow(gazeY - (dotPosition.y + dotSize / 2), 2)
+          );
+
+          if (distance < targetRadius) {
+            const reactionTime = performance.now() - dotStartTimeRef.current;
+            console.log(`Gaze hit detected! Distance: ${distance}px, reaction time: ${reactionTime}ms`);
+            setReactionTimes((prev) => [...prev, reactionTime]);
+            setPreciseHits((prev) => prev + 1);
+            setDotPosition(null); // Hide dot
+            dotStartTimeRef.current = null;
+
+            if (dotTimerRef.current) clearTimeout(dotTimerRef.current);
+            dotTimerRef.current = setTimeout(showNextDot, pauseBetweenDotsMs);
+          }
+        }
+      };
+      
+      // Setup a timer to check for hits periodically
+      const hitCheckInterval = setInterval(() => {
+        if (webgazerInstance && dotPosition) {
+          // Get current gaze position
+          const currentPrediction = (webgazerInstance as any).getCurrentPrediction();
+          if (currentPrediction) {
+            checkForGazeHits(currentPrediction);
+          }
+        }
+      }, 100); // Check 10 times per second
+      
+      return () => {
+        clearInterval(hitCheckInterval);
+      };
+    } else if (phase === "testing" && (useFallbackMode || isMobile) && dotPosition) {
       // For fallback mode, we'll use a timeout to ensure the test progresses
       if (dotTimerRef.current) clearTimeout(dotTimerRef.current);
       dotTimerRef.current = setTimeout(() => {
         console.log("Dot timed out in fallback mode, showing next.");
-        
-        if (currentDotRef.current && currentDotRef.current.parentNode) {
-          currentDotRef.current.parentNode.removeChild(currentDotRef.current);
-          currentDotRef.current = null;
-        }
-        
         setDotPosition(null);
         dotStartTimeRef.current = null;
-        showDot();
+        showNextDot();
       }, 5000); // 5 seconds timeout per dot
     }
     
     return () => {
+      if (webgazerInstance && webgazerReady && !useFallbackMode) {
+        // Clear the gaze listener
+        (webgazerInstance as any).setGazeListener(() => {});
+      }
       if (dotTimerRef.current) clearTimeout(dotTimerRef.current);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [phase, dotPosition, useFallbackMode, isMobile]);
+  }, [phase, webgazerReady, webgazerInstance, dotPosition, showNextDot, useFallbackMode, isMobile, dotSize, targetRadius, pauseBetweenDotsMs]);
+
+  const startTest = useCallback(() => {
+    setShowWebgazerVideo(false); // Ensure video is hidden once test starts
+    if (webgazerInstance && !useFallbackMode) {
+      // Explicitly hide all visual elements of WebGazer except prediction points
+      (webgazerInstance as any).showVideo(false);
+      (webgazerInstance as any).showPredictionPoints(true); // Keep prediction points visible
+      (webgazerInstance as any).showFaceOverlay(false);
+      (webgazerInstance as any).showFaceFeedbackBox(false);
+    }
+    console.log("Starting test in mode:", useFallbackMode ? "fallback (mouse/touch)" : "eye tracking");
+    setPhase("testing");
+    setCurrentDot(0);
+    setReactionTimes([]);
+    setPreciseHits(0);
+    
+    // Wait a brief moment for UI to update and WebGazer to be fully ready if it was just started
+    setTimeout(() => {
+      showNextDot();
+      // Overall test timer
+      if (testTimerRef.current) clearTimeout(testTimerRef.current);
+      testTimerRef.current = setTimeout(() => {
+        setPhase("results");
+      }, testDurationSeconds * 1000 + (totalDots * pauseBetweenDotsMs)); // Adjust duration if needed
+    }, 100); // Short delay
+  }, [webgazerInstance, useFallbackMode, showNextDot, testDurationSeconds, totalDots, pauseBetweenDotsMs]);
+
+  const toggleCalibrationVisuals = useCallback(() => {
+    if (webgazerInstance && webgazerReady && !useFallbackMode) {
+      const newVisibility = !showWebgazerVideo;
+      setShowWebgazerVideo(newVisibility);
+      (webgazerInstance as any).showVideo(newVisibility);
+      (webgazerInstance as any).showPredictionPoints(true); // Always keep prediction points visible
+      (webgazerInstance as any).showFaceOverlay(newVisibility);
+      (webgazerInstance as any).showFaceFeedbackBox(newVisibility);
+    }
+  }, [webgazerInstance, webgazerReady, useFallbackMode, showWebgazerVideo]);
+
+  const enableFallbackMode = useCallback(() => {
+    console.log("Enabling fallback mode (mouse/touch based)");
+    setUseFallbackMode(true);
+    setWebgazerError(null);
+    // If there's a webgazer instance, clean it up
+    if (webgazerInstance) {
+      console.log("Ending WebGazer instance (fallback mode enabled)");
+      (webgazerInstance as any).end();
+      setWebgazerInstance(null);
+    }
+    setWebgazerReady(false);
+  }, [webgazerInstance]);
 
   useEffect(() => {
     // Calculate results when phase changes to "results"
@@ -567,7 +485,7 @@ export function useEyeTrackingTest({
       
       if (webgazerInstance && !useFallbackMode) {
         console.log("Ending WebGazer instance (results phase)");
-        webgazerInstance.end();
+        (webgazerInstance as any).end();
       }
     }
   }, [phase, preciseHits, reactionTimes, onComplete, webgazerInstance, useFallbackMode, isMobile, totalDots]);

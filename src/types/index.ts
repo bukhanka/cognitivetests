@@ -135,6 +135,13 @@ export const TEST_BANK: Test[] = [
     path: "/tests/scooter-readiness"
   },
   {
+    id: "eye-tracking-test",
+    name: "Тест на отслеживание взгляда",
+    description: "Оценивает способность быстро обнаруживать и фокусироваться на неожиданно появляющихся стимулах",
+    duration: "10-15 секунд",
+    path: "/tests/eye-tracking-test"
+  },
+  {
     id: "peripheral-vision",
     name: "Тест на периферийное зрение",
     description: "Оценивает, насколько быстро и точно вы реагируете на стимулы, возникающие в периферическом поле зрения",
