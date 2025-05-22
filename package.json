@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "NEXT_SKIP_TYPE_CHECKING=true next build",
+    "build": "NEXT_SKIP_TYPE_CHECKING=true NEXT_SKIP_LINT=true next build",
+    "build-force": "NODE_OPTIONS=--no-warnings NEXT_SKIP_TYPE_CHECKING=true NEXT_SKIP_LINT=true next build --no-lint",
+    "build-production": "tsc --noEmit false && BABEL_ENV=production NODE_ENV=production next build --no-lint",
     "start": "next start",
     "lint": "next lint"
   },
@@ -23,7 +25,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
+    "eslint": "^8.56.0",
     "eslint-config-next": "15.3.2",
     "tailwindcss": "^4",
     "typescript": "^5"

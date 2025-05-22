@@ -73,7 +73,6 @@ export interface PeripheralVisionResult extends TestResult {
 export type AnyTestResult =
   | ReactionTimeResult
   | ScooterReadinessResult
-  | EyeTrackingTestResult
   | PeripheralVisionResult
   | NBackTestResult
   | SignDetectionResult
@@ -133,13 +132,6 @@ export const TEST_BANK: Test[] = [
     description: "Проверьте вашу концентрацию внимания перед поездкой на самокате",
     duration: "10-15 секунд",
     path: "/tests/scooter-readiness"
-  },
-  {
-    id: "eye-tracking-test",
-    name: "Тест на отслеживание взгляда",
-    description: "Оценивает способность быстро обнаруживать и фокусироваться на неожиданно появляющихся стимулах",
-    duration: "10-15 секунд",
-    path: "/tests/eye-tracking-test"
   },
   {
     id: "peripheral-vision",

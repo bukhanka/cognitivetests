@@ -7,11 +7,11 @@ const STIMULI = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const N = 2;
 const TOTAL = 5;
 
-interface NBackTestResult {
+interface NBackResult {
   correct: boolean;
 }
 
-const NBackTest: React.FC<TestComponentProps<NBackTestResult>> = ({ onComplete }) => {
+const NBackTest: React.FC<TestComponentProps<NBackResult>> = ({ onComplete }) => {
     const [phase, setPhase] = useState<'welcome' | 'test' | 'result'>('welcome');
     const [sequence, setSequence] = useState<string[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);

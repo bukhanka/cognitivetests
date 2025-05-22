@@ -12,10 +12,10 @@ export default function NBackTestPage() {
   const { addResult } = useTestResults();
   const testConfig = getTestConfigById(TEST_ID);
 
-  const handleTestComplete = useCallback((correct: boolean) => {
+  const handleTestComplete = useCallback((result: { correct: boolean }) => {
     if (!testConfig) return;
     
-    const recommendation = correct 
+    const recommendation = result.correct 
       ? "Можно ехать - хорошая рабочая память" 
       : "Лучше выбрать другой транспорт - требуется больше практики";
     
@@ -24,7 +24,7 @@ export default function NBackTestPage() {
       testName: testConfig.name,
       timestamp: Date.now(),
       recommendation,
-      passed: correct
+      passed: result.correct
     });
   }, [testConfig, addResult]);
 

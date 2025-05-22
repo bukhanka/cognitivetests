@@ -23,8 +23,6 @@ export default function VisualSearchPage() {
       testId: TEST_ID,
       testName: testConfig.name,
       timestamp: Date.now(),
-      correctCount,
-      totalRounds: 2,
       recommendation,
       passed: correctCount === 2
     });

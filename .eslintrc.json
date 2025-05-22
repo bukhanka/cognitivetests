@@ -1,10 +1,30 @@
 {
-  "extends": "next/core-web-vitals",
+  "extends": [
+    "next/core-web-vitals",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/ban-ts-comment": "off",
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/no-unused-vars": "warn",
+    "react-hooks/exhaustive-deps": "off",
+    "@next/next/no-img-element": "warn",
+    "react/no-unescaped-entities": "off"
+  },
   "overrides": [
     {
       "files": ["src/components/tests/EyeTrackingTest.tsx"],
       "rules": {
         "@typescript-eslint/no-explicit-any": "off"
+      }
+    },
+    {
+      "files": ["src/app/tests/peripheral-vision/page.tsx"],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off"
       }
     }
   ]

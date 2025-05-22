@@ -14,7 +14,11 @@ const SYMBOLS: string[] = [
     '/symbols/van.svg',
 ];
 
-export default function VisualSearchTest() {
+interface VisualSearchTestProps {
+    onComplete?: (correctCount: number) => void;
+}
+
+export default function VisualSearchTest({ onComplete }: VisualSearchTestProps) {
     const [phase, setPhase] = useState<'welcome' | 'game' | 'result'>('welcome');
     const [round, setRound] = useState(0);
     const [correctCount, setCorrectCount] = useState(0);
@@ -33,6 +37,12 @@ export default function VisualSearchTest() {
         }
         return () => clearInterval(interval);
     }, [phase, timer]);
+
+    useEffect(() => {
+        if (phase === 'result' && onComplete) {
+            onComplete(correctCount);
+        }
+    }, [phase, correctCount, onComplete]);
 
     const startGame = () => {
         setRound(0);
@@ -68,9 +78,7 @@ export default function VisualSearchTest() {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-white text-center px-4 py-8 sm:px-6 sm:py-12 md:px-8">
             {phase === 'welcome' && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
+                <div
                     className="bg-gradient-to-b from-white to-[#6a0dad22] p-6 sm:p-10 rounded-xl w-full max-w-lg"
                 >
                     <h1 className="text-base sm:text-xl text-gray-800 mb-6">
@@ -82,7 +90,7 @@ export default function VisualSearchTest() {
                     >
                         Начать тест
                     </button>
-                </motion.div>
+                </div>
             )}
 
             {phase === 'game' && (
@@ -108,9 +116,7 @@ export default function VisualSearchTest() {
             )}
 
             {phase === 'result' && (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
+                <div
                     className="text-center px-4"
                 >
                     <h2 className="text-2xl text-[#6a0dad] font-semibold mb-4">Тест завершён</h2>
@@ -124,7 +130,7 @@ export default function VisualSearchTest() {
                     >
                         Пройти снова
                     </button>
-                </motion.div>
+                </div>
             )}
         </div>
     );
